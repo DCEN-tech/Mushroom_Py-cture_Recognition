@@ -103,7 +103,7 @@ To get a better understanding of how this project was built just have a look bel
      By using this demo you can use one of the model to classify yourself mushroom images.
      See "Practice" section below for more information.
      
-
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/DCEN-tech/Mushroom_Py-cture_Recognition/blob/main/demo_streamlitColab.ipynb)
 
 # Practice
 
