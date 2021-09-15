@@ -9,7 +9,7 @@ import streamlit.components.v1 as stc
 
 # Import User libraries
 from apps.home                     import CApp as appHome
-from apps.single_image_recognition import CApp as appSingleImageRecognition
+#from apps.single_image_recognition import CApp as appSingleImageRecognition
 from apps.model_interpretability   import CApp as appModelInterpretability
 from apps.about                    import CApp as appAbout
 from model.all_models              import mushroomDetector, efficientNetB0, efficientNetB1, efficientNetB2  \
