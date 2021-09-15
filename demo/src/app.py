@@ -40,7 +40,7 @@ APP_TITLE_HTML = f'''
 		<h1 style="color:white;text-align:center;">{APP_TITLE}</h1>
 	</div>
 '''
-APP_TITLE_IMAGE='../resources/images/Mushroom py-cture_recognition_.png'
+APP_TITLE_IMAGE='../resources/images/Mushroom_py-cture_recognition.png'
 
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
