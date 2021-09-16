@@ -6,18 +6,17 @@
 import altair as alt
 import numpy as np
 import pandas as pd
-import PIL
 import streamlit as st
-import tensorflow as tf
 
 # Import User Libraries
-from components.base_component import CBaseComponent
-from session_state.session_state_utils import CSSKeys as ssKeys
-from session_state.model_state import CModelState
-from session_state.image_state import CImageClassificationState
-from session_state.mushroom_detection_state import CMushroomDetectionState
-from session_state.mushroom_classification import CMushroomClassificationState
-from model.available_models import ModelId, MushroomDetectorClasses, getAvailableModels, getClassicImagePreprocessing
+from components.base_component                     import CBaseComponent
+from session_state.session_state_utils             import CSSKeys as ssKeys
+from session_state.mushroom_detection_state        import CMushroomDetectionState
+from session_state.mushroom_classification_state   import CMushroomClassificationState
+from image.image_utils                             import prepareImageData
+from model.model                                   import EnsembleClassifier
+from model.all_models                              import MushroomDetectorClasses
+
 
 
 
@@ -29,47 +28,21 @@ class CImageRecognition(CBaseComponent):
 
    def __init__(self
       ,  compOpts
+      ,  image
+      ,  mushroomDetector   = None
+      ,  mushroomClassifier = None
    ):
       super().__init__(compOpts)
+      self.image = image
+      self.mushroomDetector   = mushroomDetector
+      self.mushroomClassifier = mushroomClassifier
 
 
-   def prepareImageData(self
-      ,  image
-      ,  target_size
-      ,  interpolation = 'bilinear'
-   ):
-      # Converting the image type if necessary: objective to get an image of type numpy.ndarray
-      if isinstance(image, PIL.JpegImagePlugin.JpegImageFile):
-         # Converting <image> to a numpy ndarray
-         image = tf.keras.preprocessing.image.img_to_array(image)
-      elif isinstance(image, np.ndarray):
-         # Nothing more to do here: the image already has the valid type
-         pass
-      else:
-         raise TypeError('Invalid type for argument <image>: actual type: {type(image)}')
 
-      # Resizing the image
-      image = tf.keras.preprocessing.image.smart_resize(
-            x             = image
-         ,  size          = target_size
-         ,  interpolation = interpolation
-      )
-      # Adding a dimension to transform our array into a "batch" of size (1, X, X, 3)
-      image = np.expand_dims(image, axis = 0)
-
-      return image
-
-
-   def _frmtForceRecognition(self, answer):
-      if answer:
-         return 'Yes'
-      return 'No'
-
-
-   def _mushroomDetection(self
+   def isMushroomDetected(self
       ,  model
       ,  image
-      ,  modelState
+      ,  console
       ,  threshold = 0.65
    ):
 
@@ -78,66 +51,45 @@ class CImageRecognition(CBaseComponent):
          idxMax = np.argmax(pred)
          resDetection = model.getClass(idxMax)
          if resDetection.value == MushroomDetectorClasses.PRESENT.value:
-            return pred[idxMax] >= threshold
-         elif resDetection.value is MushroomDetectorClasses.NOT_PRESENT:
+            return float(pred[idxMax]) >= threshold
+         elif resDetection.value == MushroomDetectorClasses.NOT_PRESENT.value:
             return False
          else:
             raise ValueError('Failed to find the corresponding class to the model prediction. Please contact the administrator.')
 
-      # Get the model ready (loading it if necessary)
-      if model.getInstance() is None:
-         model.load()
-         modelState.register()
+      # Get the model name
+      modelName = model.getName()
 
-      # Giving to the model the preprocessing data function
-      model.setPreProcessFn(
-         getClassicImagePreprocessing(
-               target_size   = model.getModelInputShape().as_list()[1:3]
-            ,  interpolation = 'bilinear'
-         )
+      # Get the model ready (loading it if necessary)
+      console.info(f'Load the model {modelName}...')
+      model.load()
+
+      # Get the model input shape
+      modelInputShape = model.getModelInputShape()
+
+      # Prepare the data for the model
+      console.info('Image preprocessing...')
+      data = prepareImageData(
+            image         = image
+         ,  target_size   = modelInputShape[1:3]
+         ,  interpolation = 'bilinear'
       )
 
       # Launch the prediction
       pred = model.predict(
-            x            = image
-         ,  verbose      = 1
+            x       = data
+         ,  verbose = 1
       )
 
       return isDetected(pred[0])
 
 
 
-
-
-
-   def isMushroomDetected(self
+   def _classify(self
+      ,  classifierModel
       ,  image
-      ,  models
-      ,  modelState
-   ):
-      if image is None:
-         raise ValueError('<None Type> is not a valid image ! Please load an image and try again.')
-
-      if models is None:
-         raise ValueError('Invalid value for parameter <models>: <None>')
-
-      # Retrieving the model "Mushroom Detector"
-      model = models.get(ModelId.MUSHROOM_DETECTOR.value)
-      if model is None:
-         raise ValueError('Failed to retrieve the model "Mushroom Detector" ! Please contact the administrator.')
-
-      # Searching for the mushroom in the image
-      return self._mushroomDetection(
-            model      = model
-         ,  image      = image
-         ,  modelState = modelState
-      )
-
-
-   def classify(self
-      ,  image
-      ,  models
-      ,  modelState
+      ,  console
+      ,  progressBar
    ):
 
       def doPrediction():
@@ -154,45 +106,42 @@ class CImageRecognition(CBaseComponent):
          '''
          pass
 
-      if image is None:
-         raise ValueError('<None Type> is not a valid image ! Please load an image and try again.')
+      if not isinstance(classifierModel, EnsembleClassifier):
+         raise NotImplementedError('Classification is only supported for the moment if the model has been inherited from class <EnsembleClassifier>. Using other kind of classifier is not yet implemented !')
 
-      if models is None:
-         raise ValueError('Invalid value for parameter <models>: <None>')
-
-      # Retrieving the model "Mushroom Classifier"
-      ensembleModel = models.get(ModelId.MUSHROOM_CLASSIFIER.value)
-      if ensembleModel is None:
-         raise ValueError('Failed to retrieve the model "Mushroom Classifier" ! Please contact the administrator.')
+      ensembleModel = classifierModel
 
       membersProbas = list()
       membersNames  = list()
+      membersCnt    = len(ensembleModel.getMembers())
       classNames    = ensembleModel.getClasses()
 
-      for model in ensembleModel.getMembers():
-
-         # Get the model ready (loading it if necessary)
-         if model.getInstance() is None:
-            model.load()
+      for cnt, model in enumerate(ensembleModel.getMembers()):
 
          # Get the model name
          modelName = model.getName()
+
+         # Get the model ready (loading it if necessary)
+         console.info(f'Load the model {modelName}...')
+         model.load()
+
+         progressBar.progress((cnt + 1/3) / membersCnt)
 
          # Get the model input shape
          modelInputShape = model.getModelInputShape()
 
          # Prepare the data for the model
-         data = self.prepareImageData(
+         console.info(f'Image preprocessing (for model: {modelName})...')
+         data = prepareImageData(
                image         = image
             ,  target_size   = modelInputShape[1:3]
             ,  interpolation = 'bilinear'
          )
 
-         # Get the model ready (loading it if necessary)
-         if model.getInstance() is None:
-            model.load()
+         progressBar.progress((cnt + 2/3) / membersCnt)
 
          # Launch the prediction
+         console.info(f'Compute classification (for model: {modelName})...')
          proba = model.predict(
                x       = data
             ,  verbose = 1
@@ -201,7 +150,11 @@ class CImageRecognition(CBaseComponent):
          membersNames.append(modelName)
          membersProbas.append(proba[0])
 
-      modelState.register()
+         progressBar.progress((cnt + 1) / membersCnt)
+
+      progressBar.progress(1.0)
+
+      # modelState.register()
 
       df_membersProbas = pd.DataFrame(
             data    = membersProbas
@@ -213,9 +166,8 @@ class CImageRecognition(CBaseComponent):
       stackX = np.reshape(stackX, newshape = (stackX.shape[0], stackX.shape[1] * stackX.shape[2]))
 
       # Get the model ready (loading it if necessary)
-      if ensembleModel.getInstance() is None:
-         ensembleModel.load()
-         modelState.register()
+      ensembleModel.load()
+      #modelState.register()
 
       # Compute the predictions for the Ensemble model
       model       = ensembleModel.getInstance()
@@ -316,6 +268,37 @@ class CImageRecognition(CBaseComponent):
 
 
 
+   def doMushroomClassification(self
+      ,  console
+   ):
+      try:
+         # mushroom classification state instanciation
+         mushroomClassificationState = CMushroomClassificationState()
+         console.info('Mushroom classification in progress... this may take a while... please wait !')
+
+         progressBar = st.progress(0)
+
+         # Ensure that an image is available
+         if self.image is None:
+            raise RuntimeError('No image available ! Please load an image and try again.')
+
+         # Ensure that a model for the mushroom detection is available
+         if self.mushroomClassifier is None:
+            raise RuntimeError('No model available for the mushroom detection ! Please contact the administrator.')
+
+         # Classify the mushroom present in the image
+         self._classify(
+               classifierModel = self.mushroomClassifier
+            ,  image           = self.image
+            ,  console         = console
+            ,  progressBar     = progressBar
+         )
+
+
+      except Exception as e:
+         console.exception(e)
+         # Updating the mushroom detection state
+         mushroomClassificationState.setData(data = None)
 
 
 
@@ -384,6 +367,43 @@ class CImageRecognition(CBaseComponent):
          return result
       '''
 
+   def doMushroomDetection(self
+      ,  console
+   ):
+      try:
+         # mushroom detection state instanciation
+         mushroomDetectionState = CMushroomDetectionState()
+
+         console.info('Mushroom detection in progress...')
+
+         # Ensure that an image is available
+         if self.image is None:
+            raise RuntimeError('No image available ! Please load an image and try again.')
+         # Ensure that a model for the mushroom detection is available
+         if self.mushroomDetector is None:
+            raise RuntimeError('No model available for the mushroom detection ! Please contact the administrator.')
+
+         # Detecting if a Mushroom is present in the image
+         detected = self.isMushroomDetected(
+               model          = self.mushroomDetector
+            ,  image          = self.image
+            ,  console        = console
+         )
+
+         # Updating the mushroom detection state
+         mushroomDetectionState.setData(data = detected)
+
+      except Exception as e:
+         console.exception(e)
+         # Updating the mushroom detection state
+         mushroomDetectionState.setData(data = None)
+
+      finally:
+         # Registering the Mushroom detection state
+         mushroomDetectionState.register()
+
+
+
 
    def render(self):
 
@@ -399,155 +419,105 @@ class CImageRecognition(CBaseComponent):
          # Button: "Launch recognition"
          #
          btn_LaunchRecognition = st.button(
-               label    = 'Launch recognition'
-            ,  help     = 'Click on this button to launch the recognition on the selected image'
+               label = 'Launch recognition'
+            ,  help  = 'Click on this button to launch the recognition on the selected image'
          )
 
          # Placeholder for Mushroom Detection
          console = st.empty()
-
-         # mushroom detection state instanciation
-         mushroomDetectionState = CMushroomDetectionState()
 
          enableClassification = False
 
          # Button: "Launch recognition" has been clicked
          if btn_LaunchRecognition:
 
-            try:
-               console.info('Mushroom detection in progress...')
+            st.write('[Phase 1]: Mushroom detection on the image')
+            self.doMushroomDetection(console = console)
 
-               # Retrieving the classification image
-               imageState = CImageClassificationState()
-               imageState.setFromRegistry()
-               if not imageState.getLoadSuccess():
-                  raise RuntimeError('No image available ! Please load an image and try again.')
-               imgData = imageState.getData()
-               if imgData is None:
-                  raise ValueError('<None Type> is not a valid image ! Please load an image and try again.')
+            # Displaying the "mushroom detection" status
+            #
+            # Retrieving the mushroom detection state
+            mushroomDetectionState = CMushroomDetectionState()
+            mushroomDetectionState.setFromRegistry()
 
-               # Retrieving all the available models
-               modelState = CModelState()
-               modelState.setFromRegistry()
-               models = modelState.get()
-               if models is None:
-                  # Retrieving available models
-                  models = getAvailableModels()
-                  # Enregistrement des modèles
-                  modelState = CModelState(state = models)
-                  modelState.register()
+            detectionState = mushroomDetectionState.getData()
 
-               # Detecting if a Mushroom is present in the image
-               detected = self.isMushroomDetected(
-                     image      = imgData
-                  ,  models     = models
-                  ,  modelState = modelState
-               )
-
-               # Updating the mushroom detection state
-               mushroomDetectionState.set(
-                     status    = detected
-                  ,  exception = None
-               )
-
-            except Exception as e:
-               # Updating the
-               mushroomDetectionState.set(
-                     status    = None
-                  ,  exception = e
-               )
-
-            finally:
-               # Registering the Mushroom detection state
-               mushroomDetectionState.register()
-
-         # Displaying the "mushroom detection" status
-         #
-         # Retrieving the mushroom detection state
-         mushroomDetectionState.setFromRegistry()
-         exception = mushroomDetectionState.getException()
-         if exception is not None:
-            console.exception(exception)
-         else:
-            if mushroomDetectionState.getStatus() == None:
+            if detectionState is None:
                enableClassification = False
-            elif mushroomDetectionState.getStatus() == True:
-               console.success('A mushroom has been detected on the image')
+            elif detectionState == True:
+               console.success('Mushroom detected in the image according to the model.')
                enableClassification = True
             else:
-               console.error('No mushroom has been detected on the image')
+               console.error('NO mushroom detected on the image according to the model.')
                # Radio: Force recognition
                radio_forceRecognition = st.radio(
                      label       = 'Do you want to force the mushroom recognition anyway ?'
-                  ,  key         = ssKeys.FORCE_RECOGNITION.value
+                  ,  key         = ssKeys.IR__FORCE_RECOGNITION.value
                   ,  options     = [False, True]
                   ,  index       = 0                  # False by default
-                  ,  format_func = self._frmtForceRecognition
+                  ,  format_func = lambda x: 'Yes' if x else 'No'
                )
+
                # Radio "Force recognition" has changed
                if radio_forceRecognition == True:
                   # Enable the Mushroom Recognition
                   enableClassification = True
                elif radio_forceRecognition == False:
                   # Nothing more to do here
-                  pass
-
-         # Launch the Mushroom Recognition (if requested)
-         if enableClassification:
-
-            # Placeholder for Mushroom Detection
-            console = st.empty()
-
-            # mushroom classification state instanciation
-            mushroomClassificationState = CMushroomClassificationState()
-
-            try:
-               console.info('Mushroom classification in progress... this may take a while...')
-
-               # Retrieving the image
-               imageState = CImageState()
-               imageState.setFromRegistry()
-               if not imageState.getLoadSuccess():
-                  raise RuntimeError('No image available ! Please load an image and try again.')
-               imgData = imageState.getData()
-               if imgData is None:
-                  raise ValueError('<None Type> is not a valid image ! Please load an image and try again.')
-
-               # Retrieving all the available models
-               modelState = CModelState()
-               modelState.setFromRegistry()
-               models = modelState.get()
-               if models is None:
-                  # Retrieving available models
-                  models = getAvailableModels()
-                  # Enregistrement des modèles
-                  modelState = CModelState(state = models)
-                  modelState.register()
-
-               # Classify the mushroom present in the image
-               self.classify(
-                     image      = imgData
-                  ,  models     = models
-                  ,  modelState = modelState
-               )
+                  enableClassification = False
 
 
-            except Exception as e:
-               # Updating the
-               mushroomClassificationState.set(
-                     status    = None
-                  ,  exception = e
-               )
-               console.exception(e)
+            # Launch the Mushroom Recognition (if requested)
+            if enableClassification:
 
-            finally:
-               # Registering the Mushroom detection state
-               mushroomClassificationState.register()
+               st.write('[Phase 2]: Mushroom genus recognition')
 
-         # preds = self.recognition(console)
+               # Placeholder for Mushroom Detection
+               console = st.empty()
+
+               self.doMushroomClassification(console = console)
+
+               '''
+                  # Retrieving the image
+                  imageState = CImageState()
+                  imageState.setFromRegistry()
+                  if not imageState.getLoadSuccess():
+                     raise RuntimeError('No image available ! Please load an image and try again.')
+                  imgData = imageState.getData()
+                  if imgData is None:
+                     raise ValueError('<None Type> is not a valid image ! Please load an image and try again.')
+
+                  # Retrieving all the available models
+                  modelState = CModelState()
+                  modelState.setFromRegistry()
+                  models = modelState.get()
+                  if models is None:
+                     # Retrieving available models
+                     models = getAvailableModels()
+                     # Enregistrement des modèles
+                     modelState = CModelState(state = models)
+                     modelState.register()
 
 
 
+
+               except Exception as e:
+                  # Updating the
+                  mushroomClassificationState.set(
+                        status    = None
+                     ,  exception = e
+                  )
+                  console.exception(e)
+
+               finally:
+                  # Registering the Mushroom detection state
+                  mushroomClassificationState.register()
+               '''
+
+            # preds = self.recognition(console)
+
+
+         # ==========================================================================
 
 
          '''

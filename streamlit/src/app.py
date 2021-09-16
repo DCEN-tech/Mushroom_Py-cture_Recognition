@@ -9,12 +9,13 @@ import streamlit.components.v1 as stc
 
 # Import User libraries
 from apps.home                     import CApp as appHome
-#from apps.single_image_recognition import CApp as appSingleImageRecognition
+from apps.single_image_recognition import CApp as appSingleImageRecognition
 from apps.model_interpretability   import CApp as appModelInterpretability
 from apps.about                    import CApp as appAbout
 from model.all_models              import mushroomDetector, efficientNetB0, efficientNetB1, efficientNetB2  \
                                           , efficientNetB3, efficientNetB4, efficientNetB5, efficientNetB6  \
-                                          , efficientNetB7, vgg16, vgg19
+                                          , efficientNetB7, vgg16, vgg19                                    \
+                                          , ensembleClassifier
 
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -109,8 +110,11 @@ def main(pageConfig = None):
       app = appHome(title = '[ Home ]')
 
    elif choice == APP_SINGLE_IMAGE_RECOGNITION:
-      #app = appSingleImageRecognition(title = '[ Single Image Recognition ]')
-      pass
+      app   = appSingleImageRecognition(
+            title              = '[ Single Image Recognition ]'
+         ,  mushroomDetector   = mushroomDetector
+         ,  mushroomClassifier = ensembleClassifier
+      )
 
    elif choice == APP_MODEL_INTERPRETABILITY:
       availableModels = [

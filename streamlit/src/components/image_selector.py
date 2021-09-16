@@ -64,10 +64,11 @@ class CImageSelector(CBaseComponent):
       return 'Remote'
 
 
-   def clbk_onChangeLocalFileUploader(self):
+   def clbk_onChangeLocalFileUploader(self, console):
+      if console is None:
+         console = st.empty()
       # A local image has been selected
       try:
-         console = st.empty()
          localFileUploader = st.session_state.get(self.compOpts.get('localFileUploader_key'))
          if localFileUploader is not None:
             # Loading the image
@@ -83,6 +84,26 @@ class CImageSelector(CBaseComponent):
       finally:
          self.compState.register()
 
+
+   def clbk_onChangeRemoteFileUploader(self, console):
+      if console is None:
+         console = st.empty()
+      # A remote image has been selected
+      try:
+         remoteFileUploader = st.session_state.get(self.compOpts.get('remoteFileUploader_key'))
+         if remoteFileUploader is not None:
+            # Loading the image
+            console.info('Loading the image...')
+            image = self.loadImageFromUrl(remoteFileUploader)
+            # Updating the image state
+            self.compState.setData(data = image)
+         console.empty()
+      except Exception as e:
+         # Updating the image state
+         self.compState.setData(data = None)
+         console.exception(e)
+      finally:
+         self.compState.register()
 
 
 
@@ -101,16 +122,20 @@ class CImageSelector(CBaseComponent):
          #
          radio_selectMode = st.radio(
                label       = 'Mode'
-            ,  key         = ssKeys.IMAGE_SELECT_MODE.value
+            ,  key         = self.compOpts.get('imageSelectMode_key')
             ,  options     = [MODE_LOCAL, MODE_REMOTE]
             ,  index       = 0
             ,  format_func = self._modeLabel
          )
 
+         # placeholder for the image loading status
+         console = st.empty()
+
          # Radio "Mode" has changed
          #
          # mode: LOCAL
          if radio_selectMode == MODE_LOCAL:
+
             # Displaying the Local Image Uploader
             localFileUploader = st.file_uploader(
                   label                 = self.compOpts.get('localFileUploader_label')
@@ -118,44 +143,9 @@ class CImageSelector(CBaseComponent):
                ,  accept_multiple_files = self.compOpts.get('localFileUploader_acceptMultipleFiles')
                ,  key                   = self.compOpts.get('localFileUploader_key')
                ,  help                  = self.compOpts.get('localFileUploader_help')
-               ,  on_change             = self.clbk_onChangeLocalFileUploader()
+               ,  on_change             = self.clbk_onChangeLocalFileUploader
+               ,  kwargs                = dict(console = console)
             )
-
-            # Placeholder for Load status
-            console = st.empty()
-
-            '''
-            # Image state instanciation
-            imageState = CImageState()
-
-            # A local image has been selected
-            if localFileUploader:
-               try:
-                  # Loading the image
-                  console.info('Loading the image...')
-                  image = self.loadImage(localFileUploader)
-                  if image is None:
-                     raise ValueError('<None Type> is not a valid image.')
-                  # From here the image loading is OK
-                  # Updating the image state
-                  imageState.set(
-                        loadSuccess = True
-                     ,  imgData     = image
-                     ,  exception   = None
-                  )
-                  # Registering the image state
-                  imageState.register()
-
-               except:
-                  e = sys.exc_info()[0]
-                  imageState.set(
-                        loadSuccess = False
-                     ,  imgData     = None
-                     ,  exception   = e
-                     )
-                  # Registering the image state
-                  imageState.register()
-               '''
 
          # REMOTE Selection Mode
          elif radio_selectMode == MODE_REMOTE:
@@ -164,71 +154,15 @@ class CImageSelector(CBaseComponent):
                   label     = self.compOpts.get('remoteFileUploader_label')
                ,  max_chars = self.compOpts.get('remoteFileUploader_maxChars')
                ,  type      = 'default'
+               ,  key       = self.compOpts.get('remoteFileUploader_key')
                ,  help      = self.compOpts.get('remoteFileUploader_help')
+               ,  on_change = self.clbk_onChangeRemoteFileUploader
+               ,  kwargs    = dict(console = console)
             )
-
-            # Placeholder for Load status
-            console = st.empty()
-
-            '''
-            # Image state instanciation
-            imageState = CImageState()
-
-
-            # A remote image has been selected
-
-            if remoteImageUploader:
-               try:
-                  # Loading the image
-                  console.info('Loading the image...')
-                  image = self.loadImageFromUrl(remoteImageUploader)
-                  if image is None:
-                     raise ValueError('<None Type> is not a valid image.')
-                  # From here the image loading is OK
-                  # Updating the image state
-                  imageState.set(
-                        loadSuccess = True
-                     ,  imgData     = image
-                     ,  exception   = None
-                  )
-                  # Registering the image state
-                  imageState.register()
-
-               except:
-                  e = sys.exc_info()[0]
-                  imageState.set(
-                        loadSuccess = False
-                     ,  imgData     = None
-                     ,  exception   = e
-                     )
-                  # Registering the image state
-                  imageState.register()
-               '''
 
          # Invalid Selection Mode
          else:
             st.exception('Invalid selection mode !')
-
-
-         '''
-         # Displaying the "load image" status
-         #
-         # Retrieving the image state
-         imageState.setFromRegistry()
-         if imageState.get() == None:
-            console.info('No image loaded yet')
-         else:
-            loadSuccess = imageState.getLoadSuccess()
-            if loadSuccess is None:
-               console.info('No image loaded yet')
-            elif loadSuccess == True:
-               console.success('Image loading: [ OK ]')
-            else:
-               console.error('Image loading: [ FAILED ]')
-               e = imageState.getException()
-               if e:
-                  st.exception(e)
-         '''
 
 
 

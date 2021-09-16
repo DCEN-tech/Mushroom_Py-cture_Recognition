@@ -9,9 +9,8 @@ import matplotlib.pyplot as plt
 # Import User libraries
 from apps.base_app import CBaseApp
 from session_state.session_state_utils import CSSKeys as ss
-from session_state.image_state import CImageInterpretabilityState, CImageClassificationState
+from session_state.image_state import CImageInterpretabilityState
 from components.image_selector import CImageSelector
-from components.model_selector import CModelSelector
 from image.image_utils import prepareImageData
 from model.interpretability import make_gradcam_heatmap
 
@@ -111,42 +110,47 @@ class CApp(CBaseApp):
 
       # component: ImageSelector
       compOpts = dict(
-            localFileUploader_label               = 'Upload a local image:'
+            imageSelectMode_key                   = ss.MI__IMAGE_SELECT_MODE.value
+         ,  localFileUploader_label               = 'Upload a local image:'
          ,  localFileUploader_allowedTypes        = ['png', 'jpg', 'jpeg']
          ,  localFileUploader_acceptMultipleFiles = False
-         ,  localFileUploader_key                 = ss.MODEL_INTERPRET_LCL_UPLDR_IMG.value
+         ,  localFileUploader_key                 = ss.MI__LOCAL_FILE_UPLOADER.value
          ,  localFileUploader_help                = 'Upload here an image containing a mushroom.'
          ,  remoteFileUploader_label              = 'URL:'
          ,  remoteFileUploader_maxChars           = 2048
          ,  remoteFileUploader_help               = 'Enter an URL pointing to an image containing a mushroom.'
+         ,  remoteFileUploader_key                = ss.MI__REMOTE_FILE_UPLOADER.value
       )
       imageSelector = CImageSelector(compOpts = compOpts, compState = imageState)
       imageSelector.render()
 
+      # Go further only if we have a valid image
+      #
       imageState.setFromRegistry()
       image = imageState.getData()
       if image:
+
          # Displaying the image
          st.write('Displaying the uploaded image:')
          st.image(image, caption = 'uploaded image')
 
-      #
-      # Button: "Launch Interpretability"
-      #
-      btn_launchInterpretability = st.button(
-            label    = 'Launch Interpretability'
-         ,  help     = 'Click on this button to launch interpretability on the selected model'
-      )
-
-      console = st.empty()
-
-      # Button clicked: "btn_launchInterpretability"
-      if btn_launchInterpretability:
-         self.doModelInterpretability(
-               models   = self.availableModels
-            ,  image   = image
-            ,  console = console
+         #
+         # Button: "Launch Interpretability"
+         #
+         btn_launchInterpretability = st.button(
+               label    = 'Launch Interpretability'
+            ,  help     = 'Click on this button to launch interpretability on the selected model'
          )
+
+         console = st.empty()
+
+         # Button clicked: "btn_launchInterpretability"
+         if btn_launchInterpretability:
+            self.doModelInterpretability(
+                  models   = self.availableModels
+               ,  image   = image
+               ,  console = console
+            )
 
 
 

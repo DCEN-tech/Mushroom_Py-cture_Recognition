@@ -19,18 +19,24 @@ class CStateType():
 
    @classmethod
    def _isValidValue(cls, data):
+      '''
       if data is None:
          return True
       return isinstance(data, bool)
+      '''
+      return True
 
 
    @classmethod
    def isValid(cls, state):
+      '''
       if state is None:
          return True
       if isinstance(state, CStateType):
          return cls._isValidValue(state.getData())
       return False
+      '''
+      return True
 
 
    def getData(self):
@@ -44,12 +50,11 @@ class CStateType():
 
 
 
-
-class CMushroomDetectionState(CObjectState):
+class CMushroomClassificationState(CObjectState):
 
    def __init__(self, data = None):
       state = CStateType(data = data)
-      super().__init__(objectKey = ssKeys.MUSHROOM_DETECTION_STATE.value, state = state)
+      super().__init__(objectKey = ssKeys.MUSHROOM_CLASSIFICATION_STATE.value, state = state)
 
 
    def isValidState(self
@@ -70,4 +75,3 @@ class CMushroomDetectionState(CObjectState):
       if state is None:
          return None
       return state.getData()
-
