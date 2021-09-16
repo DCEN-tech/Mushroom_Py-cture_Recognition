@@ -111,7 +111,7 @@ class CImageRecognition(CBaseComponent):
 
       ensembleModel = classifierModel
 
-      membersProbas = list()
+      stackX        = None
       membersNames  = list()
       membersCnt    = len(ensembleModel.getMembers())
       classNames    = ensembleModel.getClasses()
@@ -148,7 +148,10 @@ class CImageRecognition(CBaseComponent):
          )
 
          membersNames.append(modelName)
-         membersProbas.append(proba[0])
+         if stackX is None:
+            stackX = proba
+         else:
+            stackX = np.dstack((stackX, proba))
 
          progressBar.progress((cnt + 1) / membersCnt)
 
@@ -157,12 +160,11 @@ class CImageRecognition(CBaseComponent):
       # modelState.register()
 
       df_membersProbas = pd.DataFrame(
-            data    = membersProbas
-         ,  index   = membersNames
-         ,  columns = [ name.value for name in classNames ]
+            data    = stackX[0]
+         ,  index   = [ name.value for name in classNames ]
+         ,  columns = membersNames
       )
 
-      stackX = np.expand_dims(df_membersProbas, axis = 0)
       stackX = np.reshape(stackX, newshape = (stackX.shape[0], stackX.shape[1] * stackX.shape[2]))
 
       # Get the model ready (loading it if necessary)
@@ -173,9 +175,11 @@ class CImageRecognition(CBaseComponent):
       model       = ensembleModel.getInstance()
       modelProbas = model.predict_proba(stackX)
 
+      print('modelProbas.shape: ', modelProbas.shape)
+
       # Set the classifier results in a DataFrame
       df_modelProbas = pd.DataFrame(
-            data    = modelProbas.T
+            data    = modelProbas[0]
          ,  index   = [ name.value for name in classNames ]
          ,  columns = [ 'Probas' ]
       )
@@ -252,7 +256,7 @@ class CImageRecognition(CBaseComponent):
       st.markdown('* Classification:')
       classification = df_membersProbas.apply(
             func = np.argmax
-         ,  axis = 1
+         ,  axis = 0
       ) \
          .value_counts()
       classification.index.name = 'Class'
@@ -423,15 +427,16 @@ class CImageRecognition(CBaseComponent):
             ,  help  = 'Click on this button to launch the recognition on the selected image'
          )
 
-         # Placeholder for Mushroom Detection
-         console = st.empty()
-
          enableClassification = False
 
          # Button: "Launch recognition" has been clicked
          if btn_LaunchRecognition:
 
             st.write('[Phase 1]: Mushroom detection on the image')
+
+            # Placeholder for Mushroom Detection
+            console = st.empty()
+
             self.doMushroomDetection(console = console)
 
             # Displaying the "mushroom detection" status
